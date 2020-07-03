@@ -41,7 +41,7 @@ type t =
   | GreaterThan
   | LessThan
   | LessThanSlash
-  | Hash | HashEqual | HashHash
+  | Hash | HashEqual | HashHash | HashDotDotDot
   | Assert
   | Lazy
   | Tilde
@@ -120,7 +120,7 @@ let toString = function
   | Backslash -> "\\"
   | Forwardslash -> "/" | ForwardslashDot -> "/."
   | Exception -> "exception"
-  | Hash -> "#" | HashHash -> "##" | HashEqual -> "#="
+  | Hash -> "#" | HashHash -> "##" | HashEqual -> "#=" | HashDotDotDot -> "#..."
   | GreaterThan -> ">"
   | LessThan -> "<"
   | LessThanSlash -> "</"
