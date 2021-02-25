@@ -1,4 +1,4 @@
-open Ast_helper
+open! Ast_helper
 open Ast_mapper
 open Asttypes
 open Parsetree
@@ -20,7 +20,7 @@ let getLabel str = match str with Optional str | Labelled str -> str | Nolabel -
 
 let optionIdent = Lident "option"
 
-let constantString ~loc str = Ast_helper.Exp.constant ~loc (Pconst_string (str, None))
+let constantString ~loc str = Ast_helper.Exp.constant ~loc (Pconst_string (str, loc, None))
 
 let safeTypeFromValue valueStr =
   let valueStr = getLabel valueStr in
@@ -79,15 +79,25 @@ let extractChildren ?(removeLastPositionUnit = false) ~loc propsAndChildren =
   | _ -> raise (Invalid_argument "JSX: somehow there's more than one `children` label")
   [@@raises Invalid_argument]
 
-let unerasableIgnore loc = ({ loc; txt = "warning" }, PStr [ Str.eval (Exp.constant (Pconst_string ("-16", None))) ])
+(* let unerasableIgnore loc = ({ loc; txt = "warning" }, PStr [ Str.eval (Exp.constant (Pconst_string ("-16", loc, None))) ]) *)
+let unerasableIgnore loc = {
+  attr_name = { loc; txt = "warning" };
+  attr_payload = PStr [ Str.eval (Exp.constant (Pconst_string ("-16", loc, None))) ];
+  attr_loc = loc;
+}
 
-let merlinFocus = ({ loc = Location.none; txt = "merlin.focus" }, PStr [])
+(* let merlinFocus = ({ loc = Location.none; txt = "merlin.focus" }, PStr []) *)
+let merlinFocus = {
+  attr_name = { loc = Location.none; txt = "merlin.focus" };
+  attr_payload = PStr [];
+  attr_loc = Location.none;
+}
 
 (* Helper method to look up the [@react.component] attribute *)
-let hasAttr (loc, _) = loc.txt = "react.component"
+let hasAttr {attr_name} = attr_name.txt = "react.component"
 
 (* Helper method to filter out any attribute that isn't [@react.component] *)
-let otherAttrsPure (loc, _) = loc.txt <> "react.component"
+let otherAttrsPure {attr_name} = attr_name.txt <> "react.component"
 
 (* Iterate over the attributes and try to find the [@react.component] attribute *)
 let hasAttrOnBinding { pvb_attributes } = find_opt hasAttr pvb_attributes <> None
@@ -170,7 +180,7 @@ let rec recursivelyMakeNamedArgsForExternal list args =
            ( match (label, interiorType, default) with
            (* ~foo=1 *)
            | label, None, Some _ ->
-               { ptyp_desc = Ptyp_var (safeTypeFromValue label); ptyp_loc = loc; ptyp_attributes = [] }
+               { ptyp_desc = Ptyp_var (safeTypeFromValue label); ptyp_loc = loc; ptyp_attributes = []; ptyp_loc_stack = []}
            (* ~foo: int=1 *)
            | _label, Some type_, Some _ -> type_
            (* ~foo: option(int)=? *)
@@ -182,9 +192,9 @@ let rec recursivelyMakeNamedArgsForExternal list args =
                type_
            (* ~foo=? *)
            | label, None, _ when isOptional label ->
-               { ptyp_desc = Ptyp_var (safeTypeFromValue label); ptyp_loc = loc; ptyp_attributes = [] }
+               { ptyp_desc = Ptyp_var (safeTypeFromValue label); ptyp_loc = loc; ptyp_attributes = []; ptyp_loc_stack = []}
            (* ~foo *)
-           | label, None, _ -> { ptyp_desc = Ptyp_var (safeTypeFromValue label); ptyp_loc = loc; ptyp_attributes = [] }
+           | label, None, _ -> { ptyp_desc = Ptyp_var (safeTypeFromValue label); ptyp_loc = loc; ptyp_attributes = []; ptyp_loc_stack = []}
            | _label, Some type_, _ -> type_ )
            args)
   | [] -> args
@@ -198,10 +208,14 @@ let makePropsValue fnName loc namedArgListWithKeyAndRef propsType =
     pval_type =
       recursivelyMakeNamedArgsForExternal namedArgListWithKeyAndRef
         (Typ.arrow nolabel
-           { ptyp_desc = Ptyp_constr ({ txt = Lident "unit"; loc }, []); ptyp_loc = loc; ptyp_attributes = [] }
+           { ptyp_desc = Ptyp_constr ({ txt = Lident "unit"; loc }, []); ptyp_loc = loc; ptyp_attributes = []; ptyp_loc_stack = []}
            propsType);
     pval_prim = [ "" ];
-    pval_attributes = [ ({ txt = "bs.obj"; loc }, PStr []) ];
+    pval_attributes = [{
+      attr_name = { txt = "bs.obj"; loc };
+      attr_payload = PStr [];
+      attr_loc = Location.none;
+    }];
     pval_loc = loc;
   }
   [@@raises Invalid_argument]
@@ -217,9 +231,13 @@ let makePropsExternalSig fnName loc namedArgListWithKeyAndRef propsType =
   [@@raises Invalid_argument]
 
 (* Build an AST node for the props name when converted to a Js.t inside the function signature  *)
-let makePropsName ~loc name = { ppat_desc = Ppat_var { txt = name; loc }; ppat_loc = loc; ppat_attributes = [] }
+let makePropsName ~loc name = { ppat_desc = Ppat_var { txt = name; loc }; ppat_loc = loc; ppat_attributes = []; ppat_loc_stack = []}
 
-let makeObjectField loc (str, attrs, type_) = Otag ({ loc; txt = str }, attrs, type_)
+let makeObjectField loc (str, attrs, type_) = {
+  pof_desc = Otag ({ loc; txt = str }, type_);
+  pof_loc = loc;
+  pof_attributes = attrs;
+}
 
 (* Build an AST node representing a "closed" Js.t object representing a component's props *)
 let makePropsType ~loc namedTypeList =
@@ -231,6 +249,7 @@ let makePropsType ~loc namedTypeList =
              ptyp_desc = Ptyp_object (List.map (makeObjectField loc) namedTypeList, Closed);
              ptyp_loc = loc;
              ptyp_attributes = [];
+             ptyp_loc_stack = [];
            };
          ] ))
 
@@ -410,7 +429,7 @@ let jsxMapper () =
     | Some type_, name, Some _default ->
         ( getLabel name,
           [],
-          { ptyp_desc = Ptyp_constr ({ loc; txt = optionIdent }, [ type_ ]); ptyp_loc = loc; ptyp_attributes = [] } )
+          { ptyp_desc = Ptyp_constr ({ loc; txt = optionIdent }, [ type_ ]); ptyp_loc = loc; ptyp_attributes = []; ptyp_loc_stack = []} )
         :: types
     | Some type_, name, _ -> (getLabel name, [], type_) :: types
     | None, name, _ when isOptional name ->
@@ -420,13 +439,14 @@ let jsxMapper () =
             ptyp_desc =
               Ptyp_constr
                 ( { loc; txt = optionIdent },
-                  [ { ptyp_desc = Ptyp_var (safeTypeFromValue name); ptyp_loc = loc; ptyp_attributes = [] } ] );
+                  [ { ptyp_desc = Ptyp_var (safeTypeFromValue name); ptyp_loc = loc; ptyp_attributes = []; ptyp_loc_stack = [] } ] );
             ptyp_loc = loc;
             ptyp_attributes = [];
+            ptyp_loc_stack = [];
           } )
         :: types
     | None, name, _ when isLabelled name ->
-        (getLabel name, [], { ptyp_desc = Ptyp_var (safeTypeFromValue name); ptyp_loc = loc; ptyp_attributes = [] })
+        (getLabel name, [], { ptyp_desc = Ptyp_var (safeTypeFromValue name); ptyp_loc = loc; ptyp_attributes = []; ptyp_loc_stack = [] })
         :: types
     | _ -> types
     [@@raises Invalid_argument]
@@ -598,7 +618,7 @@ let jsxMapper () =
             in
             let _attr_loc, payload =
               match reactComponentAttribute with
-              | Some (loc, payload) -> (loc.loc, Some payload)
+              | Some {attr_name; attr_payload} -> (attr_name.loc, Some attr_payload)
               | None -> (emptyLoc, None)
             in
             let props = getPropsAttr payload in
@@ -659,7 +679,7 @@ let jsxMapper () =
                       Pexp_fun
                         ( nolabel,
                           None,
-                          { ppat_desc = Ppat_var { txt; loc = emptyLoc }; ppat_loc = emptyLoc; ppat_attributes = [] },
+                          { ppat_desc = Ppat_var { txt; loc = emptyLoc }; ppat_loc = emptyLoc; ppat_attributes = []; ppat_loc_stack = []},
                           innerExpression );
                   }
               | None -> innerExpression
@@ -672,6 +692,7 @@ let jsxMapper () =
                       (makePropsName ~loc:emptyLoc props.propsName, makePropsType ~loc:emptyLoc namedTypeList);
                   ppat_loc = emptyLoc;
                   ppat_attributes = [];
+                  ppat_loc_stack = [];
                 }
                 innerExpressionWithRef
             in
@@ -825,7 +846,7 @@ let jsxMapper () =
     (* Does the function application have the @JSX attribute? *)
     | { pexp_desc = Pexp_apply (callExpression, callArguments); pexp_attributes } -> (
         let jsxAttribute, nonJSXAttributes =
-          List.partition (fun (attribute, _) -> attribute.txt = "JSX") pexp_attributes
+          List.partition (fun {attr_name} -> attr_name.txt = "JSX") pexp_attributes
         in
         match (jsxAttribute, nonJSXAttributes) with
         (* no JSX attribute *)
@@ -839,7 +860,7 @@ let jsxMapper () =
         pexp_attributes;
       } as listItems -> (
         let jsxAttribute, nonJSXAttributes =
-          List.partition (fun (attribute, _) -> attribute.txt = "JSX") pexp_attributes
+          List.partition (fun {attr_name} -> attr_name.txt = "JSX") pexp_attributes
         in
         match (jsxAttribute, nonJSXAttributes) with
         (* no JSX attribute *)
@@ -860,7 +881,11 @@ let jsxMapper () =
   in
 
   let module_binding mapper module_binding =
-    let _ = nestedModules := module_binding.pmb_name.txt :: !nestedModules in
+    let _ = nestedModules :=
+      match module_binding.pmb_name.txt with
+      | Some txt -> txt :: !nestedModules
+      | None -> !nestedModules
+      in
     let mapped = default_mapper.module_binding mapper module_binding in
     let _ = nestedModules := List.tl !nestedModules in
     mapped

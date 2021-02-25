@@ -40,20 +40,20 @@ let importDescr ~attrs ~scope ~importSpec ~loc = {
 
 let toParsetree importDescr =
   let bsVal = (Location.mknoloc "val", Parsetree.PStr []) in
-  let attrs = match importDescr.jid_scope with
+  let _attrs = match importDescr.jid_scope with
   | Global -> [bsVal]
   (* @genType.import("./MyMath"),
    * @genType.import(/"./MyMath", "default"/) *)
-  | Module s ->
+  | Module _s ->
     let structure = [
-      Parsetree.Pconst_string (s, None)
+(*       Parsetree.Pconst_string (s, None)
       |> Ast_helper.Exp.constant
       |> Ast_helper.Str.eval
-    ] in
+ *)    ] in
     let genType = (Location.mknoloc "genType.import", Parsetree.PStr structure) in
     [genType]
-  | Scope longident ->
-    let structureItem =
+  | Scope _longident ->
+(*     let structureItem =
       let expr = match Longident.flatten longident |> List.map (fun s ->
         Ast_helper.Exp.constant (Parsetree.Pconst_string (s, None))
       ) with
@@ -62,22 +62,23 @@ let toParsetree importDescr =
       in
       Ast_helper.Str.eval expr
     in
-    let bsScope = (
+ *)    let bsScope = (
       Location.mknoloc "scope",
-      Parsetree. PStr [structureItem]
+      (* Parsetree. PStr [structureItem] *)
+      Parsetree. PStr []
     ) in
     [bsVal; bsScope]
   in
   let valueDescrs = match importDescr.jid_spec with
-  | Default decl ->
-    let prim = [decl.jld_name] in
-    let allAttrs =
+  | Default _decl ->
+(*    let prim = [decl.jld_name] in
+     let allAttrs =
       List.concat [attrs; importDescr.jid_attributes]
       |> List.map (fun attr -> match attr with
-        | (
-            {Location.txt = "genType.import"} as id,
-            Parsetree.PStr [{pstr_desc = Parsetree.Pstr_eval (moduleName, _) }]
-          ) ->
+        | {
+            attr_name = {txt = "genType.import"} as id;
+            attr_payload = Parsetree.PStr [{pstr_desc = Parsetree.Pstr_eval (moduleName, _) }]
+          } ->
           let default =
             Parsetree.Pconst_string ("default", None) |> Ast_helper.Exp.constant
           in
@@ -90,15 +91,9 @@ let toParsetree importDescr =
         | attr -> attr
       )
     in
-    [Ast_helper.Val.mk
-      ~loc:importDescr.jid_loc
-      ~prim
-      ~attrs:allAttrs
-      (Location.mknoloc decl.jld_alias)
-      decl.jld_type
-    |> Ast_helper.Str.primitive]
-  | Spec decls ->
-    List.map (fun decl ->
+ *)    []
+  | Spec _decls ->
+(*     List.map (fun decl ->
       let prim = [decl.jld_name] in
       let allAttrs = List.concat [attrs; decl.jld_attributes] in
       Ast_helper.Val.mk
@@ -109,8 +104,9 @@ let toParsetree importDescr =
         decl.jld_type
       |> Ast_helper.Str.primitive ~loc:decl.jld_loc
     ) decls
+ *)  []
   in
-  let jsFfiAttr = (Location.mknoloc "ns.jsFfi", Parsetree.PStr []) in
+  let _jsFfiAttr = (Location.mknoloc "ns.jsFfi", Parsetree.PStr []) in
   Ast_helper.Mod.structure ~loc:importDescr.jid_loc valueDescrs
-  |> Ast_helper.Incl.mk ~attrs:[jsFfiAttr] ~loc:importDescr.jid_loc
+  |> Ast_helper.Incl.mk ~attrs:[] ~loc:importDescr.jid_loc
   |> Ast_helper.Str.include_ ~loc:importDescr.jid_loc

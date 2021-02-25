@@ -7,7 +7,7 @@
    Parsetree.core_type
 
 val functorType: Parsetree.module_type ->
- (Parsetree.attributes * string Asttypes.loc * Parsetree.module_type option) list *
+ (Parsetree.attributes * string option Asttypes.loc * Parsetree.module_type) list *
  Parsetree.module_type
 
 (* filters @bs out of the provided attributes *)
@@ -98,7 +98,7 @@ val modExprApply : Parsetree.module_expr -> (
 
 
 val modExprFunctor : Parsetree.module_expr -> (
- (Parsetree.attributes * string Asttypes.loc * Parsetree.module_type option) list *
+ (Parsetree.attributes * string option Asttypes.loc * Parsetree.module_type) list *
  Parsetree.module_expr
 )
 

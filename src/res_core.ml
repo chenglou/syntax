@@ -96,7 +96,7 @@ Solution: directly use `concat`."
   let typeVar = "A type variable consists of a singlequote followed by a name like `'a` or `'A`"
 
   let attributeWithoutNode (attr : Parsetree.attribute) =
-    let ({Asttypes.txt = attrName}, _) = attr in
+    let Parsetree.{attr_name = {txt = attrName}} = attr in
     "Did you forget to attach `" ^ attrName ^ "` to an item?\n  Standalone attributes start with `@@` like: `@@" ^ attrName ^"`"
 
   let typeDeclarationNameLongident longident =

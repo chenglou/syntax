@@ -439,13 +439,13 @@ let printConstant c = match c with
     | Some c -> Doc.text (s ^ (Char.escaped c))
     | None -> Doc.text s
     end
-  | Pconst_string (txt, None) ->
+  | Pconst_string (txt, _, None) ->
     Doc.concat [
       Doc.text "\"";
       printStringContents txt;
       Doc.text "\"";
     ]
-  | Pconst_string (txt, Some prefix) ->
+  | Pconst_string (txt, _, Some prefix) ->
     Doc.concat [
       if prefix = "js" then Doc.nil else Doc.text prefix;
       Doc.text "`";
@@ -595,8 +595,12 @@ and printModuleBinding ~isRec moduleBinding cmtTbl i =
     | modExpr ->
       (printModExpr modExpr cmtTbl, Doc.nil)
   in
+  let txt = match moduleBinding.pmb_name.Location.txt with
+  | Some txt -> txt
+  | None -> ""
+  in
   let modName =
-    let doc = Doc.text moduleBinding.pmb_name.Location.txt in
+    let doc = Doc.text txt in
     printComments doc cmtTbl moduleBinding.pmb_name.loc
   in
   let doc = Doc.concat [
@@ -673,7 +677,7 @@ and printModType modType cmtTbl =
     let (parameters, returnType) = ParsetreeViewer.functorType modType in
     let parametersDoc = match parameters with
     | [] -> Doc.nil
-    | [attrs, {Location.txt = "_"; loc}, Some modType] ->
+    | [attrs, {Location.txt = Some "_"; loc}, modType] ->
       let cmtLoc =
         {loc with loc_end = modType.Parsetree.pmty_loc.loc_end}
       in
@@ -692,26 +696,23 @@ and printModType modType cmtTbl =
               Doc.softLine;
               Doc.join ~sep:(Doc.concat [Doc.comma; Doc.line]) (
                 List.map (fun (attrs, lbl, modType) ->
-                  let cmtLoc = match modType with
-                  | None -> lbl.Asttypes.loc
-                  | Some modType ->
+                  let cmtLoc =
                     {lbl.Asttypes.loc with loc_end = modType.Parsetree.pmty_loc.loc_end}
                   in
+                  let lblTxt = match lbl.txt with | Some l -> l | None -> "" in
                   let attrs = printAttributes attrs cmtTbl in
-                  let lblDoc = if lbl.Location.txt = "_" then Doc.nil
+                  let lblDoc = if lblTxt = "_" then Doc.nil
                     else
-                      let doc = Doc.text lbl.txt in
+                      let doc = Doc.text lblTxt in
                       printComments doc cmtTbl lbl.loc
                   in
                   let doc = Doc.concat [
                     attrs;
                     lblDoc;
-                    (match modType with
-                    | None -> Doc.nil
-                    | Some modType -> Doc.concat [
-                      if lbl.txt = "_" then Doc.nil else Doc.text ": ";
+                    Doc.concat [
+                      if lblTxt = "_" then Doc.nil else Doc.text ": ";
                       printModType modType cmtTbl;
-                    ]);
+                    ]
                   ] in
                   printComments doc cmtTbl cmtLoc
                 ) params
@@ -846,6 +847,8 @@ and printSignature signature cmtTbl =
 
 and printSignatureItem (si : Parsetree.signature_item) cmtTbl =
   match si.psig_desc with
+  (* new in ocaml 4.11 *)
+  | Psig_typesubst _| Psig_modsubst _ -> Doc.concat []
   | Parsetree.Psig_value valueDescription ->
     printValueDescription valueDescription cmtTbl
   | Psig_type (recFlag, typeDeclarations) ->
@@ -864,8 +867,9 @@ and printSignatureItem (si : Parsetree.signature_item) cmtTbl =
     printRecModuleDeclarations moduleDeclarations cmtTbl
   | Psig_modtype modTypeDecl ->
     printModuleTypeDeclaration modTypeDecl cmtTbl
-  | Psig_open openDescription ->
-    printOpenDescription openDescription cmtTbl
+  | Psig_open _openDescription ->
+    (* printOpenDescription openDescription cmtTbl *)
+    Doc.concat []
   | Psig_include includeDescription ->
     printIncludeDescription includeDescription cmtTbl
   | Psig_attribute attr -> Doc.concat [
@@ -901,10 +905,14 @@ and printRecModuleDeclaration md cmtTbl i =
     Doc.concat [Doc.text ": "; modTypeDoc]
   in
   let prefix = if i < 1 then "module rec " else "and " in
+  let pmd_name_txt = match md.pmd_name.txt with
+  | Some t -> t
+  | None -> ""
+  in
   Doc.concat [
     printAttributes ~loc:md.pmd_name.loc md.pmd_attributes cmtTbl;
     Doc.text prefix;
-    printComments (Doc.text md.pmd_name.txt) cmtTbl md.pmd_name.loc;
+    printComments (Doc.text pmd_name_txt) cmtTbl md.pmd_name.loc;
     body
   ]
 
@@ -914,22 +922,26 @@ and printModuleDeclaration (md: Parsetree.module_declaration) cmtTbl =
     Doc.concat [Doc.text " = "; printLongidentLocation longident cmtTbl]
   | _ -> Doc.concat [Doc.text ": "; printModType md.pmd_type cmtTbl]
   in
+  let pmd_name_txt = match md.pmd_name.txt with
+  | Some t -> t
+  | None -> ""
+  in
   Doc.concat [
     printAttributes ~loc:md.pmd_name.loc md.pmd_attributes cmtTbl;
     Doc.text "module ";
-    printComments (Doc.text md.pmd_name.txt) cmtTbl md.pmd_name.loc;
+    printComments (Doc.text pmd_name_txt) cmtTbl md.pmd_name.loc;
     body
   ]
 
-and printOpenDescription (openDescription : Parsetree.open_description) cmtTbl =
+and printOpenDescription (_openDescription) _cmtTbl =
   Doc.concat [
-    printAttributes openDescription.popen_attributes cmtTbl;
+(*     printAttributes openDescription.popen_attributes cmtTbl;
     Doc.text "open";
     (match openDescription.popen_override with
     | Asttypes.Fresh -> Doc.space
     | Asttypes.Override -> Doc.text "! ");
     printLongidentLocation openDescription.popen_lid cmtTbl
-  ]
+ *)  ]
 
 and printIncludeDescription (includeDescription: Parsetree.include_description) cmtTbl =
   Doc.concat [
@@ -1588,15 +1600,15 @@ and printTypExpr (typExpr : Parsetree.core_type) cmtTbl =
     Doc.text "classes are not supported in types"
   | Ptyp_variant (rowFields, closedFlag, labelsOpt) ->
     let forceBreak = typExpr.ptyp_loc.Location.loc_start.pos_lnum < typExpr.ptyp_loc.loc_end.pos_lnum in
-    let printRowField = function
-    | Parsetree.Rtag ({txt}, attrs, true, []) ->
+    let printRowField a = match a.Parsetree.prf_desc with
+    | Parsetree.Rtag ({txt}, true, []) ->
       Doc.group (
         Doc.concat [
-          printAttributes attrs cmtTbl;
+          (* printAttributes attrs cmtTbl; *)
           Doc.concat [Doc.text "#"; printPolyVarIdent txt]
         ]
       )
-    | Rtag ({txt}, attrs, truth, types) ->
+    | Rtag ({txt}, truth, types) ->
       let doType t = match t.Parsetree.ptyp_desc with
       | Ptyp_tuple _ -> printTypExpr t cmtTbl
       | _ -> Doc.concat [ Doc.lparen; printTypExpr t cmtTbl; Doc.rparen ]
@@ -1606,7 +1618,7 @@ and printTypExpr (typExpr : Parsetree.core_type) cmtTbl =
       let cases = if truth then Doc.concat [Doc.line; Doc.text "& "; cases] else cases in
       Doc.group (
         Doc.concat [
-          printAttributes attrs cmtTbl;
+          (* printAttributes attrs cmtTbl; *)
           Doc.concat [Doc.text "#"; printPolyVarIdent txt];
           cases
         ]
@@ -1722,14 +1734,14 @@ and printTupleType ~inline (types: Parsetree.core_type list) cmtTbl =
   if inline == false then Doc.group(tuple) else tuple
 
 and printObjectField (field : Parsetree.object_field) cmtTbl =
-  match field with
-  | Otag (labelLoc, attrs, typ) ->
+  match field.pof_desc with
+  | Parsetree.Otag (labelLoc, typ) ->
     let lbl =
       let doc = Doc.text ("\"" ^ labelLoc.txt ^ "\"") in
       printComments doc cmtTbl labelLoc.loc
     in
     let doc = Doc.concat [
-      printAttributes ~loc:labelLoc.loc attrs cmtTbl;
+      (* printAttributes ~loc:labelLoc.loc attrs cmtTbl; *)
       lbl;
       Doc.text ": ";
       printTypExpr typ cmtTbl;
@@ -1764,7 +1776,7 @@ and printTypeParameter (attrs, lbl, typ) cmtTbl =
   | Optional _lbl -> Doc.text "=?"
   in
   let (loc, typ) = match typ.ptyp_attributes with
-  | ({Location.txt = "ns.namedArgLoc"; loc}, _)::attrs ->
+  | {attr_name = {txt = "ns.namedArgLoc"; loc}}::attrs ->
     ({loc with loc_end = typ.ptyp_loc.loc_end}, {typ with ptyp_attributes = attrs})
   | _ -> (typ.ptyp_loc, typ)
   in
@@ -1916,7 +1928,7 @@ and printValueBinding ~recFlag vb cmtTbl i =
         ParsetreeViewer.isBinaryExpression expr ||
         (match vb.pvb_expr with
         | {
-            pexp_attributes = [({Location.txt="ns.ternary"}, _)];
+            pexp_attributes = [{attr_name = {txt="ns.ternary"}}];
             pexp_desc = Pexp_ifthenelse (ifExpr, _, _)
           }  ->
           ParsetreeViewer.isBinaryExpression ifExpr || ParsetreeViewer.hasAttributes ifExpr.pexp_attributes
@@ -2320,10 +2332,10 @@ and printPattern (p : Parsetree.pattern) cmtTbl =
 
    (* Note: module(P : S) is represented as *)
    (* Ppat_constraint(Ppat_unpack, Ptyp_package) *)
-  | Ppat_constraint ({ppat_desc = Ppat_unpack stringLoc}, {ptyp_desc = Ptyp_package packageType; ptyp_loc}) ->
+  | Ppat_constraint ({ppat_desc = Ppat_unpack _stringLoc}, {ptyp_desc = Ptyp_package packageType; ptyp_loc}) ->
       Doc.concat [
         Doc.text "module(";
-        printComments (Doc.text stringLoc.txt) cmtTbl stringLoc.loc;
+        (* printComments (Doc.text stringLoc.txt) cmtTbl stringLoc.loc; *)
         Doc.text ": ";
         printComments
           (printPackageType ~printModuleKeywordAndParens:false packageType cmtTbl)
@@ -2340,10 +2352,10 @@ and printPattern (p : Parsetree.pattern) cmtTbl =
 
    (* Note: module(P : S) is represented as *)
    (* Ppat_constraint(Ppat_unpack, Ptyp_package) *)
-  | Ppat_unpack stringLoc ->
+  | Ppat_unpack _stringLoc ->
     Doc.concat [
       Doc.text "module(";
-      printComments (Doc.text stringLoc.txt) cmtTbl stringLoc.loc;
+      (* printComments (Doc.text stringLoc.txt) cmtTbl stringLoc.loc; *)
       Doc.rparen;
     ]
   | Ppat_interval (a, b) ->
@@ -2954,7 +2966,7 @@ and printExpression (e : Parsetree.expression) cmtTbl =
         rhs;
       ]
     )
-  | Pexp_open (_overrideFlag, _longidentLoc, _expr) ->
+  | Pexp_open (_, _expr) ->
     printExpressionBlock ~braces:true e cmtTbl
   | Pexp_pack (modExpr) ->
     Doc.group (Doc.concat [
@@ -2970,6 +2982,9 @@ and printExpression (e : Parsetree.expression) cmtTbl =
     ])
   | Pexp_sequence _ ->
     printExpressionBlock ~braces:true e cmtTbl
+  (* new in ocaml 4.11 *)
+  | Pexp_letop _ ->
+    Doc.concat []
   | Pexp_let _ ->
     printExpressionBlock ~braces:true e cmtTbl
   | Pexp_fun (Nolabel, None, {ppat_desc = Ppat_var {txt="__x"}}, ({pexp_desc = Pexp_apply _})) ->
@@ -3282,7 +3297,7 @@ and printTemplateLiteral expr cmtTbl =
         let lhs = walkExpr arg1 in
         let rhs = walkExpr arg2 in
         Doc.concat [lhs; rhs]
-    | Pexp_constant (Pconst_string (txt, Some prefix)) ->
+    | Pexp_constant (Pconst_string (txt, _, Some prefix)) ->
       tag := prefix;
       printStringContents txt
     | _ ->
@@ -3520,7 +3535,7 @@ and printBinaryExpression (expr : Parsetree.expression) cmtTbl =
         match Parens.binaryExpr {expr with
           pexp_attributes = List.filter (fun attr ->
             match attr with
-            | ({Location.txt = ("ns.braces")}, _) -> false
+            | Parsetree.{attr_name = {txt = ("ns.braces")}} -> false
             | _ -> true
           ) expr.pexp_attributes
         } with
@@ -3672,7 +3687,7 @@ and printPexpApply expr cmtTbl =
         ParsetreeViewer.isBinaryExpression targetExpr ||
         (match targetExpr with
         | {
-            pexp_attributes = [({Location.txt="ns.ternary"}, _)];
+            pexp_attributes = [{attr_name = {txt="ns.ternary"}}];
             pexp_desc = Pexp_ifthenelse (ifExpr, _, _)
           }  ->
           ParsetreeViewer.isBinaryExpression ifExpr || ParsetreeViewer.hasAttributes ifExpr.pexp_attributes
@@ -3892,7 +3907,7 @@ and printJsxProp arg cmtTbl =
   | (
       (Asttypes.Labelled lblTxt | Optional lblTxt) as lbl,
       {
-        Parsetree.pexp_attributes = [({Location.txt = "ns.namedArgLoc"; loc = argLoc}, _)];
+        Parsetree.pexp_attributes = [{attr_name = {Location.txt = "ns.namedArgLoc"; loc = argLoc}}];
         pexp_desc = Pexp_ident {txt = Longident.Lident ident}
       }
     ) when lblTxt = ident (* jsx punning *) ->
@@ -3924,7 +3939,7 @@ and printJsxProp arg cmtTbl =
     end
   | (lbl, expr) ->
     let (argLoc, expr) = match expr.pexp_attributes with
-    | ({Location.txt = "ns.namedArgLoc"; loc}, _)::attrs ->
+    | {attr_name = {txt = "ns.namedArgLoc"; loc}}::attrs ->
         (loc, {expr with pexp_attributes = attrs})
     | _ ->
       Location.none, expr
@@ -4204,11 +4219,11 @@ and printArgument (argLbl, arg) cmtTbl =
   | (
       (Asttypes.Labelled lbl),
       ({pexp_desc=Pexp_ident {txt = Longident.Lident name};
-        pexp_attributes = ([] | [({Location.txt = "ns.namedArgLoc";}, _)])
+        pexp_attributes = ([] | [{attr_name = {Location.txt = "ns.namedArgLoc";}}])
        } as argExpr)
     ) when lbl = name && not (ParsetreeViewer.isBracedExpr argExpr) ->
     let loc = match arg.pexp_attributes with
-    | ({Location.txt = "ns.namedArgLoc"; loc}, _)::_ -> loc
+    | {attr_name = {txt = "ns.namedArgLoc"; loc}}::_ -> loc
     | _ -> arg.pexp_loc
     in
     let doc = Doc.concat [
@@ -4225,11 +4240,11 @@ and printArgument (argLbl, arg) cmtTbl =
           typ
        );
        pexp_loc;
-       pexp_attributes = ([] | [({Location.txt = "ns.namedArgLoc";}, _)]) as attrs
+       pexp_attributes = ([] | [{attr_name = {Location.txt = "ns.namedArgLoc";}}]) as attrs
       }
     ) when lbl = name && not (ParsetreeViewer.isBracedExpr argExpr) ->
     let loc = match attrs with
-    | ({Location.txt = "ns.namedArgLoc"; loc}, _)::_ ->
+    | {attr_name = {txt = "ns.namedArgLoc"; loc}}::_ ->
       {loc with loc_end = pexp_loc.loc_end}
     | _ -> arg.pexp_loc
     in
@@ -4244,11 +4259,11 @@ and printArgument (argLbl, arg) cmtTbl =
   | (
       (Asttypes.Optional lbl),
       {pexp_desc=Pexp_ident {txt = Longident.Lident name};
-       pexp_attributes = ([] | [({Location.txt = "ns.namedArgLoc";}, _)])
+       pexp_attributes = ([] | [{attr_name = {Location.txt = "ns.namedArgLoc";}}])
       }
     ) when lbl = name ->
     let loc = match arg.pexp_attributes with
-    | ({Location.txt = "ns.namedArgLoc"; loc}, _)::_ -> loc
+    | {attr_name = {txt = "ns.namedArgLoc"; loc}}::_ -> loc
     | _ -> arg.pexp_loc
     in
     let doc = Doc.concat [
@@ -4259,7 +4274,7 @@ and printArgument (argLbl, arg) cmtTbl =
     printComments doc cmtTbl loc
   | (_lbl, expr) ->
     let (argLoc, expr) = match expr.pexp_attributes with
-    | ({Location.txt = "ns.namedArgLoc"; loc}, _)::attrs ->
+    | {attr_name = {txt = "ns.namedArgLoc"; loc}}::attrs ->
         (loc, {expr with pexp_attributes = attrs})
     | _ ->
       expr.pexp_loc, expr
@@ -4298,7 +4313,7 @@ and printCases (cases: Parsetree.case list) cmtTbl =
               loc_end =
                 match ParsetreeViewer.processBracesAttr n.Parsetree.pc_rhs with
                 | (None, _) -> n.pc_rhs.pexp_loc.loc_end
-                | (Some ({loc}, _), _) -> loc.Location.loc_end
+                | (Some {attr_name = {loc}}, _) -> loc.Location.loc_end
             })
             ~print:printCase
             ~nodes:cases
@@ -4460,7 +4475,7 @@ and printExpFunParameter parameter cmtTbl =
     | (
         (Asttypes.Labelled lbl | Optional lbl),
         {ppat_desc = Ppat_var stringLoc;
-         ppat_attributes = ([] | [({Location.txt = "ns.namedArgLoc";}, _)])
+         ppat_attributes = ([] | [{attr_name = {txt = "ns.namedArgLoc";}}])
         }
       ) when lbl = stringLoc.txt ->
         (* ~d *)
@@ -4471,7 +4486,7 @@ and printExpFunParameter parameter cmtTbl =
     | (
         (Asttypes.Labelled lbl | Optional lbl),
          ({ppat_desc = Ppat_constraint ({ ppat_desc = Ppat_var { txt } }, typ);
-           ppat_attributes = ([] | [({Location.txt = "ns.namedArgLoc";}, _)])
+           ppat_attributes = ([] | [{attr_name = {txt = "ns.namedArgLoc";}}])
           })
       ) when lbl = txt ->
         (* ~d: e *)
@@ -4506,13 +4521,13 @@ and printExpFunParameter parameter cmtTbl =
     let cmtLoc = match defaultExpr with
     | None ->
       begin match pattern.ppat_attributes with
-      | ({Location.txt = "ns.namedArgLoc"; loc}, _)::_ ->
+      | {attr_name = {txt = "ns.namedArgLoc"; loc}}::_ ->
         {loc with loc_end = pattern.ppat_loc.loc_end}
       | _ -> pattern.ppat_loc
       end
     | Some expr ->
       let startPos =  match pattern.ppat_attributes with
-      | ({Location.txt = "ns.namedArgLoc"; loc}, _)::_ ->
+      | {attr_name = {txt = "ns.namedArgLoc"; loc}}::_ ->
           loc.loc_start
       | _ -> pattern.ppat_loc.loc_start
       in {
@@ -4527,7 +4542,8 @@ and printExpressionBlock ~braces expr cmtTbl =
   let rec collectRows acc expr = match expr.Parsetree.pexp_desc with
   | Parsetree.Pexp_letmodule (modName, modExpr, expr2) ->
     let name =
-      let doc = Doc.text modName.txt in
+      (* let doc = Doc.text modName.txt in *)
+      let doc = Doc.text "" in
       printComments doc cmtTbl modName.loc
     in
     let letModuleDoc = Doc.concat [
@@ -4539,7 +4555,7 @@ and printExpressionBlock ~braces expr cmtTbl =
     let loc = {expr.pexp_loc with loc_end = modExpr.pmod_loc.loc_end} in
     collectRows ((loc, letModuleDoc)::acc) expr2
   | Pexp_letexception (extensionConstructor, expr2) ->
-    let loc =
+    let _loc =
       let loc = {expr.pexp_loc with loc_end = extensionConstructor.pext_loc.loc_end} in
       match getFirstLeadingComment cmtTbl loc with
       | None -> loc
@@ -4547,17 +4563,19 @@ and printExpressionBlock ~braces expr cmtTbl =
         let cmtLoc = Comment.loc comment in
         {cmtLoc with loc_end = loc.loc_end}
     in
-    let letExceptionDoc = printExceptionDef extensionConstructor cmtTbl in
-    collectRows ((loc, letExceptionDoc)::acc) expr2
-  | Pexp_open (overrideFlag, longidentLoc, expr2) ->
-    let openDoc = Doc.concat [
+    (* let letExceptionDoc = printExceptionDef extensionConstructor cmtTbl in *)
+    (* collectRows ((loc, letExceptionDoc)::acc) expr2 *)
+    collectRows (acc) expr2
+  | Pexp_open (_, expr2) ->
+    let _openDoc = Doc.concat [
       Doc.text "open";
-      printOverrideFlag overrideFlag;
+      (* printOverrideFlag overrideFlag; *)
       Doc.space;
-      printLongidentLocation longidentLoc cmtTbl;
+      (* printLongidentLocation longidentLoc cmtTbl; *)
     ] in
-    let loc = {expr.pexp_loc with loc_end = longidentLoc.loc.loc_end} in
-    collectRows ((loc, openDoc)::acc) expr2
+    (* let loc = {expr.pexp_loc with loc_end = longidentLoc.loc.loc_end} in *)
+    (* collectRows ((loc, openDoc)::acc) expr2 *)
+    collectRows (acc) expr2
   | Pexp_sequence (expr1, expr2) ->
     let exprDoc =
       let doc = printExpression expr1 cmtTbl in
@@ -4677,7 +4695,7 @@ and printBraces doc expr bracesLoc =
       ]
     )
 
-and printOverrideFlag overrideFlag = match overrideFlag with
+and _printOverrideFlag overrideFlag = match overrideFlag with
   | Asttypes.Override -> Doc.text "!"
   | Fresh -> Doc.nil
 
@@ -4732,7 +4750,7 @@ and printAttributes ?loc ?(inline=false) (attrs: Parsetree.attributes) cmtTbl =
     let lineBreak = match loc with
     | None -> Doc.line
     | Some loc -> begin match List.rev attrs with
-      | ({loc = firstLoc}, _)::_ when loc.loc_start.pos_lnum > firstLoc.loc_end.pos_lnum ->
+      | {attr_name = {loc = firstLoc}}::_ when loc.loc_start.pos_lnum > firstLoc.loc_end.pos_lnum ->
         Doc.hardLine;
       | _ -> Doc.line
       end
@@ -4823,7 +4841,7 @@ and printPayload (payload : Parsetree.payload) cmtTbl =
       Doc.rparen;
     ]
 
-and printAttribute ((id, payload) : Parsetree.attribute) cmtTbl =
+and printAttribute ({attr_name = id; attr_payload = payload}) cmtTbl =
   let contents = match id.txt with
   | "bs.val" -> "val"
   | "bs.module" -> "module"
@@ -5015,14 +5033,14 @@ and printModFunctor modExpr cmtTbl =
   | _ -> (Doc.nil, printModExpr returnModExpr cmtTbl)
   in
   let parametersDoc = match parameters with
-  | [(attrs, {txt = "*"}, None)] ->
+  | [(attrs, {txt = Some "*"}, _)] ->
       Doc.group (
         Doc.concat [
           printAttributes attrs cmtTbl;
           Doc.text "()"
         ]
       )
-  | [([], {txt = lbl}, None)] -> Doc.text lbl
+  | [([], {txt = Some lbl}, _)] -> Doc.text lbl
   | parameters ->
     Doc.group (
       Doc.concat [
@@ -5050,29 +5068,21 @@ and printModFunctor modExpr cmtTbl =
     ]
   )
 
-and printModFunctorParam (attrs, lbl, optModType) cmtTbl =
-  let cmtLoc = match optModType with
-  | None -> lbl.Asttypes.loc
-  | Some modType -> {lbl.loc with loc_end =
-      modType.Parsetree.pmty_loc.loc_end
-    }
-  in
+and printModFunctorParam (attrs, lbl, modType) cmtTbl =
+  let cmtLoc = {lbl.loc with loc_end = modType.Parsetree.pmty_loc.loc_end} in
   let attrs = printAttributes attrs cmtTbl in
-  let lblDoc =
+(*   let lblDoc =
     let doc = if lbl.txt = "*" then Doc.text "()" else Doc.text lbl.txt in
     printComments doc cmtTbl lbl.loc
   in
-  let doc = Doc.group (
+ *)  let doc = Doc.group (
     Doc.concat [
       attrs;
-      lblDoc;
-      (match optModType with
-      | None -> Doc.nil
-      | Some modType ->
-        Doc.concat [
-          Doc.text ": ";
-          printModType modType cmtTbl
-        ]);
+      (* lblDoc; *)
+      Doc.concat [
+        Doc.text ": ";
+        printModType modType cmtTbl
+      ];
     ]
   ) in
   printComments doc cmtTbl cmtLoc
@@ -5083,8 +5093,8 @@ and printModApplyArg modExpr cmtTbl =
   | _ -> printModExpr modExpr cmtTbl
 
 
-and printExceptionDef (constr : Parsetree.extension_constructor) cmtTbl =
-  let kind = match constr.pext_kind with
+and printExceptionDef _constr _cmtTbl =
+(*   let kind = match constr.pext_kind with
   | Pext_rebind longident -> Doc.indent (
       Doc.concat [
         Doc.text " =";
@@ -5121,6 +5131,8 @@ and printExceptionDef (constr : Parsetree.extension_constructor) cmtTbl =
     ]
   ) in
   printComments doc cmtTbl constr.pext_loc
+ *)
+ Doc.concat []
 
 and printExtensionConstructor (constr : Parsetree.extension_constructor) cmtTbl i =
   let attrs = printAttributes constr.pext_attributes cmtTbl in

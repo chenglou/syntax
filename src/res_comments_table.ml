@@ -188,7 +188,7 @@ let arrowType ct =
   | {ptyp_desc = Ptyp_arrow (Nolabel as lbl, typ1, typ2); ptyp_attributes = []} ->
     let arg = ([], lbl, typ1) in
     process attrsBefore (arg::acc) typ2
-  | {ptyp_desc = Ptyp_arrow (Nolabel as lbl, typ1, typ2); ptyp_attributes = [({txt ="bs"}, _) ] as attrs} ->
+  | {ptyp_desc = Ptyp_arrow (Nolabel as lbl, typ1, typ2); ptyp_attributes = [{attr_name = {txt ="bs"}} ] as attrs} ->
     let arg = (attrs, lbl, typ1) in
     process attrsBefore (arg::acc) typ2
   | {ptyp_desc = Ptyp_arrow (Nolabel, _typ1, _typ2); ptyp_attributes = _attrs} as returnType ->
@@ -218,7 +218,7 @@ let modExprApply modExpr =
 (* TODO: avoiding the dependency on ParsetreeViewer here, is this a good idea? *)
 let modExprFunctor modExpr =
   let rec loop acc modExpr = match modExpr with
-  | {Parsetree.pmod_desc = Pmod_functor (lbl, modType, returnModExpr); pmod_attributes = attrs} ->
+  | {Parsetree.pmod_desc = Pmod_functor (Named ({txt = Some lbl}, modType), returnModExpr); pmod_attributes = attrs} ->
     let param = (attrs, lbl, modType) in
     loop (param::acc) returnModExpr
   | returnModExpr ->
@@ -228,7 +228,7 @@ let modExprFunctor modExpr =
 
 let functorType modtype =
   let rec process acc modtype = match modtype with
-  | {Parsetree.pmty_desc = Pmty_functor (lbl, argType, returnType); pmty_attributes = attrs} ->
+  | {Parsetree.pmty_desc = Pmty_functor (Named ({txt = Some lbl}, argType), returnType); pmty_attributes = attrs} ->
     let arg = (attrs, lbl, argType) in
     process (arg::acc) returnType
   | modType ->
@@ -270,7 +270,7 @@ let funExpr expr =
       Ast_helper.Pat.var ~loc:stringLoc.loc var
     ) in
     collect attrsBefore (parameter::acc) returnExpr
-  | {pexp_desc = Pexp_fun (lbl, defaultExpr, pattern, returnExpr); pexp_attributes = [({txt = "bs"}, _)] as attrs} ->
+  | {pexp_desc = Pexp_fun (lbl, defaultExpr, pattern, returnExpr); pexp_attributes = [{attr_name = {txt = "bs"}}] as attrs} ->
     let parameter = (attrs, lbl, defaultExpr, pattern) in
     collect attrsBefore (parameter::acc) returnExpr
   | {
@@ -325,8 +325,8 @@ let rec walkStructure s t comments =
     | _ when comments = [] -> ()
     | Pstr_primitive valueDescription ->
       walkValueDescription valueDescription t comments
-    | Pstr_open openDescription ->
-      walkOpenDescription openDescription t comments
+    | Pstr_open openDeclaration ->
+      walkOpenDeclaration openDeclaration t comments
     | Pstr_value (_, valueBindings) ->
       walkValueBindings valueBindings t comments
     | Pstr_type (_, typeDeclarations) ->
@@ -350,8 +350,8 @@ let rec walkStructure s t comments =
       walkExtension extension t comments
     | Pstr_include includeDeclaration ->
       walkIncludeDeclaration includeDeclaration t comments
-    | Pstr_exception extensionConstructor ->
-      walkExtConstr extensionConstructor t comments
+    | Pstr_exception typeException ->
+      walkTypeException typeException t comments
     | Pstr_typext typeExtension ->
       walkTypeExtension typeExtension t comments
     | Pstr_class_type _  | Pstr_class _ -> ()
@@ -450,14 +450,17 @@ let rec walkStructure s t comments =
   and walkSignatureItem si t comments =
     match si.psig_desc with
     | _ when comments = [] -> ()
+    (* new from 4.11 *)
+    | Psig_typesubst _ | Psig_modsubst _ -> ()
+
     | Psig_value valueDescription ->
       walkValueDescription valueDescription t comments
     | Psig_type (_, typeDeclarations) ->
       walkTypeDeclarations typeDeclarations t comments
     | Psig_typext typeExtension ->
       walkTypeExtension typeExtension t comments
-    | Psig_exception extensionConstructor ->
-      walkExtConstr extensionConstructor t comments
+    | Psig_exception typeException ->
+      walkTypeException typeException t comments
     | Psig_module moduleDeclaration ->
       walkModuleDeclaration moduleDeclaration t comments
     | Psig_recmodule moduleDeclarations ->
@@ -595,10 +598,18 @@ let rec walkStructure s t comments =
       comments
 
   and walkOpenDescription openDescription t comments =
-    let loc = openDescription.popen_lid.loc in
+    let loc = openDescription.popen_expr.loc in
     let (leading, trailing) = partitionLeadingTrailing comments loc in
     attach t.leading loc leading;
     attach t.trailing loc trailing;
+
+  and walkOpenDeclaration openDescription t comments =
+(*     let loc = openDescription.popen_expr.loc in
+    let (leading, trailing) = partitionLeadingTrailing comments loc in
+    attach t.leading loc leading;
+    attach t.trailing loc trailing;
+ *)
+    ignore (openDescription, t, comments);
 
   and walkTypeDeclarations typeDeclarations t comments =
     walkList
@@ -857,8 +868,8 @@ let rec walkStructure s t comments =
         walkExpr expr2 t inside;
         attach t.trailing expr2.pexp_loc trailing
       )
-    | Pexp_open (_override, longident, expr2) ->
-      let (leading, comments) =
+    | Pexp_open (_, _expr2) ->
+(*       let (leading, comments) =
         partitionLeadingTrailing comments expr.pexp_loc in
       attach
         t.leading
@@ -878,6 +889,8 @@ let rec walkStructure s t comments =
         walkExpr expr2 t inside;
         attach t.trailing expr2.pexp_loc trailing
       )
+ *)
+     ()
     | Pexp_extension (
         {txt = "bs.obj" | "obj"},
         PStr [{
@@ -1280,7 +1293,7 @@ let rec walkStructure s t comments =
       walkList
         ~getLoc:(fun (_argLabel, expr) ->
           match expr.Parsetree.pexp_attributes with
-          | ({Location.txt = "ns.namedArgLoc"; loc}, _)::_attrs ->
+          | {attr_name = {txt = "ns.namedArgLoc"; loc}}::_attrs ->
               {loc with loc_end = expr.pexp_loc.loc_end}
           | _ ->
              expr.pexp_loc
@@ -1297,7 +1310,7 @@ let rec walkStructure s t comments =
       ~getLoc:(fun (_attrs, _argLbl, exprOpt, pattern) ->
         let open Parsetree in
         let startPos = match pattern.ppat_attributes with
-        | ({Location.txt = "ns.namedArgLoc"; loc}, _)::_attrs ->
+        | {attr_name = {txt = "ns.namedArgLoc"; loc}}::_attrs ->
             loc.loc_start
         | _ ->
            pattern.ppat_loc.loc_start
@@ -1369,7 +1382,7 @@ and walkExprPararameter (_attrs, _argLbl, exprOpt, pattern) t comments =
 
 and walkExprArgument (_argLabel, expr) t comments =
   match expr.Parsetree.pexp_attributes with
-  | ({Location.txt = "ns.namedArgLoc"; loc}, _)::_attrs ->
+  | {attr_name = {txt = "ns.namedArgLoc"; loc}}::_attrs ->
     let (leading, trailing) = partitionLeadingTrailing comments loc in
     attach t.leading loc leading;
     let (afterLabel, rest) = partitionAdjacentTrailing loc trailing in
@@ -1435,6 +1448,15 @@ and walkExprArgument (_argLabel, expr) t comments =
       partitionAdjacentTrailing extConstr.pext_name.loc trailing in
     attach t.trailing extConstr.pext_name.loc afterName;
     walkExtensionConstructorKind extConstr.pext_kind t rest
+
+  and walkTypeException typeException t comments =
+    let (leading, trailing) =
+      partitionLeadingTrailing comments typeException.ptyexn_loc in
+    attach t.leading typeException.ptyexn_loc leading;
+    let (afterName, rest) =
+      partitionAdjacentTrailing typeException.ptyexn_loc trailing in
+    attach t.trailing typeException.ptyexn_loc afterName;
+    walkExtensionConstructorKind typeException.ptyexn_constructor.pext_kind t rest
 
   and walkExtensionConstructorKind kind t comments =
     match kind with
@@ -1502,13 +1524,9 @@ and walkExprArgument (_argLabel, expr) t comments =
         t
         comments
     | Pmod_functor _ ->
-      let (parameters, returnModExpr) = modExprFunctor modExpr in
+(*       let (parameters, returnModExpr) = modExprFunctor modExpr in
       let comments = visitListButContinueWithRemainingComments
-        ~getLoc:(fun
-          (_, lbl, modTypeOption) -> match modTypeOption with
-          | None -> lbl.Asttypes.loc
-          | Some modType -> {lbl.loc with loc_end = modType.Parsetree.pmty_loc.loc_end}
-        )
+        ~getLoc:(fun (_, lbl, modType) -> {lbl.loc with loc_end = modType.Parsetree.pmty_loc.loc_end})
         ~walkNode:walkModExprParameter
         ~newlineDelimited:false
         parameters
@@ -1533,21 +1551,21 @@ and walkExprArgument (_argLabel, expr) t comments =
         walkModExpr returnModExpr t inside;
         attach t.trailing returnModExpr.pmod_loc after
       end
+ *)
+  ();
 
   and walkModExprParameter parameter t comments =
-    let (_attrs, lbl, modTypeOption) = parameter in
+(*     let (_attrs, lbl, modType) = parameter in
     let (leading, trailing) = partitionLeadingTrailing comments lbl.loc in
     attach t.leading lbl.loc leading;
-    begin match modTypeOption with
-    | None -> attach t.trailing lbl.loc trailing
-    | Some modType ->
-      let (afterLbl, rest) = partitionAdjacentTrailing lbl.loc trailing in
-      attach t.trailing lbl.loc afterLbl;
-      let (before, inside, after) = partitionByLoc rest modType.pmty_loc in
-      attach t.leading modType.pmty_loc before;
-      walkModType modType t inside;
-      attach t.trailing modType.pmty_loc after;
-    end
+    let (afterLbl, rest) = partitionAdjacentTrailing lbl.loc trailing in
+    attach t.trailing lbl.loc afterLbl;
+    let (before, inside, after) = partitionByLoc rest modType.pmty_loc in
+    attach t.leading modType.pmty_loc before;
+    walkModType modType t inside;
+    attach t.trailing modType.pmty_loc after;
+ *)
+   ignore (parameter, t, comments);
 
   and walkModType modType t comments =
     match modType.pmty_desc with
@@ -1573,7 +1591,7 @@ and walkExprArgument (_argLabel, expr) t comments =
       attach t.trailing modType.pmty_loc after
       (* TODO: withConstraints*)
     | Pmty_functor _ ->
-      let (parameters, returnModType) = functorType modType in
+(*       let (parameters, returnModType) = functorType modType in
       let comments = visitListButContinueWithRemainingComments
         ~getLoc:(fun
           (_, lbl, modTypeOption) -> match modTypeOption with
@@ -1592,9 +1610,11 @@ and walkExprArgument (_argLabel, expr) t comments =
       attach t.leading returnModType.pmty_loc before;
       walkModType returnModType t inside;
       attach t.trailing returnModType.pmty_loc after
+ *)
+  ();
 
-  and walkModTypeParameter (_, lbl, modTypeOption) t comments =
-    let (leading, trailing) = partitionLeadingTrailing comments lbl.loc in
+  and walkModTypeParameter bla t comments =
+(*     let (leading, trailing) = partitionLeadingTrailing comments lbl.loc in
     attach t.leading lbl.loc leading;
     begin match modTypeOption with
     | None -> attach t.trailing lbl.loc trailing
@@ -1606,6 +1626,8 @@ and walkExprArgument (_argLabel, expr) t comments =
       walkModType modType t inside;
       attach t.trailing modType.pmty_loc after;
     end
+ *)
+  ignore (bla, t, comments);
 
   and walkPattern pat t comments =
     let open Location in
@@ -1811,7 +1833,7 @@ and walkExprArgument (_argLabel, expr) t comments =
     | _ -> ()
 
   and walkTypObjectFields fields t comments =
-    walkList
+(*     walkList
       ~getLoc:(fun field ->
         match field with
         | Parsetree.Otag (lbl, _, typ) ->
@@ -1822,10 +1844,12 @@ and walkExprArgument (_argLabel, expr) t comments =
       fields
       t
       comments
+ *)
+  ignore (fields, t, comments);
 
   and walkTypObjectField field t comments =
     match field with
-    | Otag (lbl, _, typexpr) ->
+    | Parsetree.Otag (lbl, typexpr) ->
       let (beforeLbl, afterLbl) = partitionLeadingTrailing comments lbl.loc in
       attach t.leading lbl.loc beforeLbl;
       let (afterLbl, rest) = partitionAdjacentTrailing lbl.loc afterLbl in
@@ -1841,7 +1865,7 @@ and walkExprArgument (_argLabel, expr) t comments =
     visitListButContinueWithRemainingComments
       ~getLoc:(fun (_, _, typexpr) ->
         match typexpr.Parsetree.ptyp_attributes with
-        | ({Location.txt = "ns.namedArgLoc"; loc}, _)::_attrs ->
+        | {attr_name = {txt = "ns.namedArgLoc"; loc}}::_attrs ->
             {loc with loc_end = typexpr.ptyp_loc.loc_end}
         | _ ->
           typexpr.ptyp_loc
@@ -1901,12 +1925,14 @@ and walkExprArgument (_argLabel, expr) t comments =
     attach t.trailing id.loc afterId;
     walkPayload payload t rest
 
-  and walkAttribute (id, payload) t comments =
-    let (beforeId, afterId) = partitionLeadingTrailing comments id.loc in
+  and walkAttribute bla t comments =
+(*     let (beforeId, afterId) = partitionLeadingTrailing comments id.loc in
     attach t.leading id.loc beforeId;
     let (afterId, rest) = partitionAdjacentTrailing id.loc afterId in
     attach t.trailing id.loc afterId;
     walkPayload payload t rest
+ *)
+    ignore (bla, t, comments);
 
   and walkPayload payload t comments =
     match payload with

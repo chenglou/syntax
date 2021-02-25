@@ -5,7 +5,7 @@ let arrowType ct =
   | {ptyp_desc = Ptyp_arrow (Nolabel as lbl, typ1, typ2); ptyp_attributes = []} ->
     let arg = ([], lbl, typ1) in
     process attrsBefore (arg::acc) typ2
-  | {ptyp_desc = Ptyp_arrow (Nolabel as lbl, typ1, typ2); ptyp_attributes = [({txt ="bs"}, _) ] as attrs} ->
+  | {ptyp_desc = Ptyp_arrow (Nolabel as lbl, typ1, typ2); ptyp_attributes = [{attr_name = {txt ="bs"}}] as attrs} ->
     let arg = (attrs, lbl, typ1) in
     process attrsBefore (arg::acc) typ2
   | {ptyp_desc = Ptyp_arrow (Nolabel, _typ1, _typ2); ptyp_attributes = _attrs} as returnType ->
@@ -25,7 +25,7 @@ let arrowType ct =
 
 let functorType modtype =
   let rec process acc modtype = match modtype with
-  | {pmty_desc = Pmty_functor (lbl, argType, returnType); pmty_attributes = attrs} ->
+  | {pmty_desc = Pmty_functor (Named (lbl, argType), returnType); pmty_attributes = attrs} ->
     let arg = (attrs, lbl, argType) in
     process (arg::acc) returnType
   | modType ->
@@ -37,7 +37,7 @@ let processUncurriedAttribute attrs =
   let rec process uncurriedSpotted acc attrs =
     match attrs with
     | [] -> (uncurriedSpotted, List.rev acc)
-    | ({Location.txt = "bs"}, _)::rest -> process true acc rest
+    | {attr_name = {txt = "bs"}}::rest -> process true acc rest
     | attr::rest -> process uncurriedSpotted (attr::acc) rest
   in
   process false [] attrs
@@ -115,7 +115,7 @@ let funExpr expr =
     let (stringLocs, returnExpr) = collectNewTypes [stringLoc] rest in
     let param = NewTypes {attrs; locs = stringLocs} in
     collect attrsBefore (param::acc) returnExpr
-  | {pexp_desc = Pexp_fun (lbl, defaultExpr, pattern, returnExpr); pexp_attributes = [({txt = "bs"}, _)] as attrs} ->
+  | {pexp_desc = Pexp_fun (lbl, defaultExpr, pattern, returnExpr); pexp_attributes = [{attr_name = {txt = "bs"}}] as attrs} ->
     let parameter = Parameter {
       attrs = attrs;
       lbl = lbl;
@@ -145,7 +145,7 @@ let funExpr expr =
 
 let processBracesAttr expr =
   match expr.pexp_attributes with
-  | (({txt = "ns.braces"}, _) as attr)::attrs ->
+  | ({attr_name =  {txt = "ns.braces"}} as attr)::attrs ->
     (Some attr, {expr with pexp_attributes = attrs})
   | _ ->
     (None, expr)
@@ -153,7 +153,7 @@ let processBracesAttr expr =
 let filterParsingAttrs attrs =
   List.filter (fun attr ->
     match attr with
-    | ({Location.txt = ("ns.ternary" | "ns.braces" | "bs" | "ns.iflet" | "ns.namedArgLoc")}, _) -> false
+    | {attr_name = {txt = ("ns.ternary" | "ns.braces" | "bs" | "ns.iflet" | "ns.namedArgLoc")}} -> false
     | _ -> true
   ) attrs
 
@@ -191,13 +191,13 @@ let isHuggableExpression expr =
   match expr.pexp_desc with
   | Pexp_array _
   | Pexp_tuple _
-  | Pexp_constant (Pconst_string (_, Some _))
+  | Pexp_constant (Pconst_string (_, _, Some _))
   | Pexp_construct ({txt = Longident.Lident ("::" | "[]")}, _)
   | Pexp_extension ({txt = "bs.obj" | "obj"}, _)
   | Pexp_record _ -> true
   | _ when isBlockExpr expr -> true
   | _ when isBracedExpr expr -> true
-  | Pexp_constant (Pconst_string (txt, None)) when isMultilineText txt -> true
+  | Pexp_constant (Pconst_string (txt, _, None)) when isMultilineText txt -> true
   | _ -> false
 
 let isHuggableRhs expr =
@@ -280,7 +280,7 @@ let flattenableOperators parentOperator childOperator =
 let rec hasIfLetAttribute attrs =
   match attrs with
   | [] -> false
-  | ({Location.txt="ns.iflet"},_)::_ -> true
+  | {attr_name = {txt="ns.iflet"}}::_ -> true
   | _::attrs -> hasIfLetAttribute attrs
 
 let isIfLetExpr expr = match expr with
@@ -292,15 +292,15 @@ let isIfLetExpr expr = match expr with
 
 let hasAttributes attrs =
   List.exists (fun attr -> match attr with
-    | ({Location.txt = "bs" | "ns.ternary" | "ns.braces" | "ns.iflet"}, _) -> false
+    | {attr_name = {txt = "bs" | "ns.ternary" | "ns.braces" | "ns.iflet"}} -> false
     (* Remove the fragile pattern warning for iflet expressions *)
-    | ({Location.txt="warning"}, PStr [{
+    | {attr_name = {txt="warning"}; attr_payload = PStr [{
       pstr_desc = Pstr_eval ({
         pexp_desc = Pexp_constant (
-          Pconst_string ("-4", None)
+          Pconst_string ("-4", _, None)
         )
       }, _)
-    }]) -> not (hasIfLetAttribute attrs)
+    }]} -> not (hasIfLetAttribute attrs)
     | _ -> true
   ) attrs
 
@@ -348,7 +348,7 @@ let collectIfExpressions expr =
 let rec hasTernaryAttribute attrs =
   match attrs with
   | [] -> false
-  | ({Location.txt="ns.ternary"},_)::_ -> true
+  | {attr_name = {txt="ns.ternary"}}::_ -> true
   | _::attrs -> hasTernaryAttribute attrs
 
 let isTernaryExpr expr = match expr with
@@ -379,19 +379,19 @@ let parametersShouldHug parameters = match parameters with
 
 let filterTernaryAttributes attrs =
   List.filter (fun attr -> match attr with
-    |({Location.txt="ns.ternary"},_) -> false
+    |{attr_name = {txt="ns.ternary"}} -> false
     | _ -> true
   ) attrs
 
 let filterFragileMatchAttributes attrs =
   List.filter (fun attr -> match attr with
-    | ({Location.txt="warning"}, PStr [{
+    | {attr_name = {txt="warning"}; attr_payload = PStr [{
       pstr_desc = Pstr_eval ({
         pexp_desc = Pexp_constant (
-          Pconst_string ("-4", _)
+          Pconst_string ("-4", _, _)
         )
       }, _)
-    }]) -> false
+    }]} -> false
     | _ -> true
   ) attrs
 
@@ -399,7 +399,7 @@ let isJsxExpression expr =
   let rec loop attrs =
     match attrs with
     | [] -> false
-    | ({Location.txt = "JSX"}, _)::_ -> true
+    | {attr_name = {txt = "JSX"}}::_ -> true
     | _::attrs -> loop attrs
   in
   match expr.pexp_desc with
@@ -411,7 +411,7 @@ let hasJsxAttribute attributes =
   let rec loop attrs =
     match attrs with
     | [] -> false
-    | ({Location.txt = "JSX"}, _)::_ -> true
+    | {attr_name = {txt = "JSX"}}::_ -> true
     | _::attrs -> loop attrs
   in
   loop attributes
@@ -453,13 +453,13 @@ let shouldInlineRhsBinaryExpr rhs = match rhs.pexp_desc with
 
 let filterPrinteableAttributes attrs =
   List.filter (fun attr -> match attr with
-    | ({Location.txt="bs" | "ns.ternary" | "ns.iflet"}, _) -> false
+    | {attr_name = {txt="bs" | "ns.ternary" | "ns.iflet"}} -> false
     | _ -> true
   ) attrs
 
 let partitionPrinteableAttributes attrs =
   List.partition (fun attr -> match attr with
-    | ({Location.txt="bs" | "ns.ternary" | "ns.iflet"}, _) -> false
+    | {attr_name = {txt="bs" | "ns.ternary" | "ns.iflet"}} -> false
     | _ -> true
   ) attrs
 
@@ -493,7 +493,7 @@ let modExprApply modExpr =
 
 let modExprFunctor modExpr =
   let rec loop acc modExpr = match modExpr with
-  | {pmod_desc = Pmod_functor (lbl, modType, returnModExpr); pmod_attributes = attrs} ->
+  | {pmod_desc = Pmod_functor (Named (lbl, modType), returnModExpr); pmod_attributes = attrs} ->
     let param = (attrs, lbl, modType) in
     loop (param::acc) returnModExpr
   | returnModExpr ->
@@ -503,7 +503,7 @@ let modExprFunctor modExpr =
 
 let splitGenTypeAttr attrs =
   match attrs with
-  | ({Location.txt = "genType"}, PStr [])::attrs -> (true, attrs)
+  | {attr_name = {txt = "genType"}; attr_payload = PStr []}::attrs -> (true, attrs)
   | attrs -> (false, attrs)
 
 let rec collectPatternsFromListConstruct acc pattern =

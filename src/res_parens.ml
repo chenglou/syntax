@@ -4,7 +4,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let expr expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | _ ->
       begin match expr with
       | {Parsetree.pexp_desc = Pexp_constraint (
@@ -18,7 +18,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let callExpr expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | _ ->
       begin match expr with
       | {Parsetree.pexp_attributes = attrs} when
@@ -54,7 +54,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let structureExpr expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | None ->
       begin match expr with
       | _ when ParsetreeViewer.hasAttributes expr.pexp_attributes &&
@@ -70,7 +70,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let unaryExprOperand expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | None ->
       begin match expr with
       | {Parsetree.pexp_attributes = attrs} when
@@ -110,7 +110,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let binaryExprOperand ~isLhs expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | None ->
       begin match expr with
       | {Parsetree.pexp_desc = Pexp_constraint (
@@ -176,7 +176,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let lazyOrAssertExprRhs expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | None ->
       begin match expr with
       | {Parsetree.pexp_attributes = attrs} when
@@ -221,7 +221,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let fieldExpr expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | None ->
       begin match expr with
       | {Parsetree.pexp_attributes = attrs} when
@@ -262,7 +262,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let setFieldExprRhs expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | None ->
       begin match expr with
       | {Parsetree.pexp_desc = Pexp_constraint (
@@ -276,7 +276,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let ternaryOperand expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | None ->
       begin match expr with
       | {Parsetree.pexp_desc = Pexp_constraint (
@@ -311,7 +311,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
     | _ ->
       let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
       begin match optBraces with
-      | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+      | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
       | None ->
         begin match expr with
         | {Parsetree.pexp_desc =
@@ -343,7 +343,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
     | _ ->
       let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
       begin match optBraces with
-      | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+      | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
       | _ ->
         begin match expr with
         | {Parsetree.pexp_desc = Pexp_constant (Pconst_integer (x, _) | Pconst_float (x, _));
@@ -368,7 +368,7 @@ type kind = Parenthesized | Braced of Location.t | Nothing
   let binaryExpr expr =
     let optBraces, _ = ParsetreeViewer.processBracesAttr expr in
     match optBraces with
-    | Some ({Location.loc = bracesLoc}, _) -> Braced(bracesLoc)
+    | Some {attr_name = {loc = bracesLoc}} -> Braced(bracesLoc)
     | None ->
       begin match expr with
       | {Parsetree.pexp_attributes = _::_} as expr
