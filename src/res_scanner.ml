@@ -3,7 +3,7 @@ module Token = Res_token
 module Comment = Res_comment
 
 module Print = struct
-  let debug = false
+  let debug = true
   let disabled _ = ()
   let print_string = if debug then print_string else disabled
   let print_endline = if debug then print_endline else disabled

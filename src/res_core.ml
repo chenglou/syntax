@@ -2659,9 +2659,9 @@ and parseJsxChildren p =
     | LessThan ->
       (* assumption: we're in scanner's JSX mode *)
       let currentTokenIndex = p.currentTokenIndex in
-      begin try
-        let nextTokenIndex = currentTokenIndex + 1 in
-        (match p.tokens.(nextTokenIndex) with
+      let nextTokenIndex = currentTokenIndex + 1 in
+      if nextTokenIndex < Array.length p.tokens then begin
+        match p.tokens.(nextTokenIndex) with
         | Forwardslash ->
           p.tokens.(currentTokenIndex) <- JsxPlaceholder;
           p.tokens.(nextTokenIndex) <- LessThanSlash;
@@ -2674,12 +2674,9 @@ and parseJsxChildren p =
           p.startPoss.(nextTokenIndex) <- p.startPoss.(currentTokenIndex);
           (* endPos doesn't change *)
           Parser.next p;
-        | _ -> ()
-        );
-        loop ~fixedJsx:true p children
-      with
-      | Invalid_argument _ -> loop ~fixedJsx:true p children
-      end
+        | _ -> ();
+      end;
+      loop ~fixedJsx:true p children
     | token when Grammar.isJsxChildStart token ->
       let () = Scanner.popMode p.scanner Jsx in
       let child = parsePrimaryExpr ~operand:(parseAtomicExpr p) ~noCall:true p in
@@ -2687,6 +2684,7 @@ and parseJsxChildren p =
     | _ ->
       Scanner.popMode p.scanner Jsx;
       List.rev children
+  [@@progress]
   in
   match p.Parser.token with
   | DotDotDot ->
