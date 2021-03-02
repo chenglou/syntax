@@ -15,12 +15,15 @@ type t = {
   mutable lineOffset: int; (* current line offset *)
   mutable lnum: int; (* current line number *)
   mutable mode: mode list;
+  mutable commentCount: int;
 }
 
 val make: filename:string -> string -> t
 
 (* TODO: make this a record *)
 val scan: t -> (Lexing.position * Lexing.position * Res_token.t)
+
+val _printDebug: startPos:Lexing.position -> endPos:Lexing.position -> t -> Res_token.t -> unit
 
 val isBinaryOp: string -> int -> int -> bool
 
@@ -33,3 +36,11 @@ val reconsiderLessThan: t -> Res_token.t
 val scanTemplateLiteralToken: t -> (Lexing.position * Lexing.position * Res_token.t)
 
 val tryAdvanceQuotedString: t -> unit
+
+module Print: sig
+  val print_string: string -> unit
+  val print_endline: string -> unit
+  val print_int: int -> unit
+  val print_char: char -> unit
+end
+

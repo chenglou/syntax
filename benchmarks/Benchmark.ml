@@ -275,20 +275,21 @@ end = struct
     Benchmark.launch b;
     Benchmark.report b
 
+  let _ = ignore (Ocaml, Reason, Parse, Print)
   let run () =
     benchmark "./benchmarks/data/RedBlackTree.res" Rescript Parse;
-    benchmark "./benchmarks/data/RedBlackTree.ml" Ocaml Parse;
-    benchmark "./benchmarks/data/RedBlackTree.re" Reason Parse;
-    benchmark "./benchmarks/data/RedBlackTree.res" Rescript Print;
-    benchmark "./benchmarks/data/RedBlackTreeNoComments.res" Rescript Print;
+    (* benchmark "./benchmarks/data/RedBlackTree.ml" Ocaml Parse; *)
+    (* benchmark "./benchmarks/data/RedBlackTree.re" Reason Parse; *)
+    (* benchmark "./benchmarks/data/RedBlackTree.res" Rescript Print; *)
+    (* benchmark "./benchmarks/data/RedBlackTreeNoComments.res" Rescript Print; *)
     benchmark "./benchmarks/data/Napkinscript.res" Rescript Parse;
-    benchmark "./benchmarks/data/Napkinscript.ml" Ocaml Parse;
-    benchmark "./benchmarks/data/Napkinscript.re" Reason Parse;
-    benchmark "./benchmarks/data/Napkinscript.res" Rescript Print;
+    (* benchmark "./benchmarks/data/Napkinscript.ml" Ocaml Parse; *)
+    (* benchmark "./benchmarks/data/Napkinscript.re" Reason Parse; *)
+    (* benchmark "./benchmarks/data/Napkinscript.res" Rescript Print; *)
     benchmark "./benchmarks/data/HeroGraphic.res" Rescript Parse;
-    benchmark "./benchmarks/data/HeroGraphic.ml" Ocaml Parse;
-    benchmark "./benchmarks/data/HeroGraphic.re" Reason Parse;
-    benchmark "./benchmarks/data/HeroGraphic.res" Rescript Print;
+    (* benchmark "./benchmarks/data/HeroGraphic.ml" Ocaml Parse; *)
+    (* benchmark "./benchmarks/data/HeroGraphic.re" Reason Parse; *)
+    (* benchmark "./benchmarks/data/HeroGraphic.res" Rescript Print; *)
 end
 
 let () = Benchmarks.run()

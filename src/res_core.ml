@@ -8,6 +8,8 @@ module Scanner = Res_scanner
 module JsFfi = Res_js_ffi
 module Parser = Res_parser
 
+open! Scanner.Print
+
 let mkLoc startLoc endLoc = Location.{
   loc_start = startLoc;
   loc_end = endLoc;
@@ -1026,6 +1028,7 @@ let parseRegion p ~grammar ~f =
       if p.Parser.token = Token.Eof || Recover.shouldAbortListParse p then
         List.rev nodes
       else (
+        print_endline "-- parseRegion.";
         Parser.err p (Diagnostics.unexpected p.token p.breadcrumbs);
         Parser.next p;
         loop nodes
@@ -1844,6 +1847,7 @@ and parseAtomicExpr p =
     | Lbrace ->
       parseBracedOrRecordExpr  p
     | LessThan ->
+      print_endline "-- parseAtomicExpr.";
       parseJsx p
     | Percent ->
       let extension = parseExtension p in
@@ -2316,7 +2320,9 @@ and parseLetBindingBody ~startPos ~attrs p =
     Parser.leaveBreadcrumb p Grammar.Pattern;
     let pat = parsePattern p in
     Parser.eatBreadcrumb p;
-    match p.Parser.token with
+(*     print_string "my turn now: ";
+    print_endline (Token.toString p.Parser.token);
+ *)    match p.Parser.token with
     | Colon ->
       Parser.next p;
       begin match p.token with
@@ -2373,6 +2379,7 @@ and parseAttributesAndBinding (p : Parser.t) =
   let lineOffset = p.scanner.lineOffset in
   let lnum = p.scanner.lnum in
   let mode = p.scanner.mode in
+  let currentTokenIndex = p.currentTokenIndex in
   let token = p.token in
   let startPos = p.startPos in
   let endPos = p.endPos in
@@ -2395,6 +2402,7 @@ and parseAttributesAndBinding (p : Parser.t) =
       p.scanner.lineOffset <- lineOffset;
       p.scanner.lnum <- lnum;
       p.scanner.mode <- mode;
+      p.currentTokenIndex <- currentTokenIndex;
       p.token <- token;
       p.startPos <- startPos;
       p.endPos <- endPos;
@@ -2479,14 +2487,18 @@ and parseJsxOpeningOrSelfClosingElement ~startPos p =
   | GreaterThan -> (* <foo a=b> bar </foo> *)
     let childrenStartPos = p.Parser.startPos in
     Scanner.setJsxMode p.scanner;
+    print_endline ("tolkiem");
+    print_endline (Token.toString (p.token));
     Parser.next p;
     let (spread, children) = parseJsxChildren p in
     let childrenEndPos = p.Parser.startPos in
     let () = match p.token with
     | LessThanSlash -> Parser.next p
-    | LessThan -> Parser.next p; Parser.expect Forwardslash p
+    | LessThan ->
+      Parser.next p; Parser.expect Forwardslash p
     | token when Grammar.isStructureItemStart token -> ()
-    | _ -> Parser.expect LessThanSlash p
+    | _ ->
+      Parser.expect LessThanSlash p
     in
     begin match p.Parser.token with
     | Lident _ | Uident _ when verifyJsxOpeningClosingName p name ->
@@ -2625,12 +2637,12 @@ and parseJsxProps p =
     p
 
 and parseJsxChildren p =
-  let rec loop p children =
+  let rec loop ?(fixedJsx=false) p children =
     match p.Parser.token  with
     | Token.Eof | LessThanSlash ->
       Scanner.popMode p.scanner Jsx;
       List.rev children
-    | LessThan ->
+    | LessThan when fixedJsx ->
       (* Imagine: <div> <Navbar /> <
        * is `<` the start of a jsx-child? <div …
        * or is it the start of a closing tag?  </div>
@@ -2644,6 +2656,30 @@ and parseJsxChildren p =
         let () = p.token <- token in
         let () = Scanner.popMode p.scanner Jsx in
         List.rev children
+    | LessThan ->
+      (* assumption: we're in scanner's JSX mode *)
+      let currentTokenIndex = p.currentTokenIndex in
+      begin try
+        let nextTokenIndex = currentTokenIndex + 1 in
+        (match p.tokens.(nextTokenIndex) with
+        | Forwardslash ->
+          p.tokens.(currentTokenIndex) <- JsxPlaceholder;
+          p.tokens.(nextTokenIndex) <- LessThanSlash;
+          p.startPoss.(nextTokenIndex) <- p.startPoss.(currentTokenIndex);
+          (* endPos doesn't change *)
+          Parser.next p;
+        | Equal ->
+          p.tokens.(currentTokenIndex) <- JsxPlaceholder;
+          p.tokens.(nextTokenIndex) <- LessEqual;
+          p.startPoss.(nextTokenIndex) <- p.startPoss.(currentTokenIndex);
+          (* endPos doesn't change *)
+          Parser.next p;
+        | _ -> ()
+        );
+        loop ~fixedJsx:true p children
+      with
+      | Invalid_argument _ -> loop ~fixedJsx:true p children
+      end
     | token when Grammar.isJsxChildStart token ->
       let () = Scanner.popMode p.scanner Jsx in
       let child = parsePrimaryExpr ~operand:(parseAtomicExpr p) ~noCall:true p in
@@ -3837,6 +3873,11 @@ and parseTypeParameter p =
     p.token = Dot ||
     Grammar.isTypExprStart p.token
   ) then (
+
+    print_string "-- parseTypeParameter. ";
+    print_endline (Token.toString p.token);
+    print_endline "";
+
     let startPos = p.Parser.startPos in
     let uncurried = Parser.optional p Dot in
     let attrs = parseAttributes p in
@@ -3898,7 +3939,17 @@ and parseTypeParameter p =
 (* (int, ~x:string, float) *)
 and parseTypeParameters p =
   let startPos = p.Parser.startPos in
+
+  print_endline "-- parseTypeParameters.";
+  Scanner._printDebug
+    ~startPos:p.Parser.startPos
+    ~endPos:p.Parser.endPos
+    p.scanner
+    p.token;
+  print_endline "";
+
   Parser.expect Lparen p;
+
   match p.Parser.token with
   | Rparen ->
     Parser.next p;
@@ -3914,7 +3965,9 @@ and parseTypeParameters p =
     params
 
 and parseEs6ArrowType ~attrs p =
-  let startPos = p.Parser.startPos in
+(*   print_endline "hello!";
+  print_endline (Token.toString p.Parser.token);
+ *)  let startPos = p.Parser.startPos in
   match p.Parser.token with
   | Tilde ->
     Parser.next p;
@@ -5132,6 +5185,7 @@ and parseStructureItemRegion p =
     let loc = mkLoc startPos p.prevEndPos in
     Some (Ast_helper.Str.open_ ~loc openDescription)
   | Let ->
+    (* print_endline "==parseStructureItemRegion"; *)
     let (recFlag, letBindings) = parseLetBindings ~attrs p in
     parseNewlineOrSemicolonStructure p;
     let loc = mkLoc startPos p.prevEndPos in

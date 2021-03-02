@@ -26,7 +26,7 @@ let isSingleLineComment t = match t.style with
 
 let toString t =
   Format.sprintf
-    "(txt: %s\nstyle: %s\nlines: %d-%d)"
+    "(txt: %s style: %s lines: %d-%d)"
     t.txt
     (styleToString t.style)
     t.loc.loc_start.pos_lnum

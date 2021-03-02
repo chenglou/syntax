@@ -12,6 +12,12 @@ type regionStatus = Report | Silent
 type t = {
   mode: mode;
   mutable scanner: Scanner.t;
+
+  mutable currentTokenIndex: int;
+  mutable tokens: Token.t array;
+  mutable startPoss: Lexing.position array;
+  mutable endPoss: Lexing.position array;
+
   mutable token: Token.t;
   mutable startPos: Lexing.position;
   mutable endPos: Lexing.position;

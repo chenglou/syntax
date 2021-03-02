@@ -24,7 +24,7 @@ let getStartPos t = t.startPos
 let getEndPos t = t.endPos
 
 let defaultUnexpected token =
-  "I'm not sure what to parse here when looking at \"" ^ (Token.toString token) ^ "\"."
+  "I'm not sure what to parse here FUCK when looking at \"" ^ (Token.toString token) ^ "\"."
 
 let reservedKeyword token =
   let tokenTxt = Token.toString token in
@@ -107,14 +107,14 @@ let explain t =
         | _::_, (Rbracket | Rbrace | Eof) ->
           "Missing expression"
         | _ ->
-          "I'm not sure what to parse here when looking at \"" ^ name ^ "\"."
+          "I'm not sure what to parse here FUCKA when looking at \"" ^ name ^ "\"."
         end
     | (TypeParam, _)::_ ->
         begin match t with
         | Lident ident ->
           "Did you mean '" ^ ident ^"? A Type parameter starts with a quote."
         | _ ->
-          "I'm not sure what to parse here when looking at \"" ^ name ^ "\"."
+          "I'm not sure what to parse here FUCKTYPEPARAM when looking at \"" ^ name ^ "\"."
         end
     | (Pattern, _)::breadcrumbs ->
       begin match t, breadcrumbs with
@@ -134,7 +134,7 @@ let explain t =
       if Token.isKeyword t then
         "`" ^ name ^ "` is a reserved keyword. Keywords need to be escaped: \\\"" ^ (Token.toString t) ^ "\""
       else
-      "I'm not sure what to parse here when looking at \"" ^ name ^ "\"."
+      "I'm not sure what to parse here FUCKDASH when looking at \"" ^ name ^ "\"."
     end
 
 let make ~startPos ~endPos category = {

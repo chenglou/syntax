@@ -2,6 +2,17 @@ module Diagnostics = Res_diagnostics
 module Token = Res_token
 module Comment = Res_comment
 
+module Print = struct
+  let debug = false
+  let disabled _ = ()
+  let print_string = if debug then print_string else disabled
+  let print_endline = if debug then print_endline else disabled
+  let print_int = if debug then print_int else disabled
+  let print_char = if debug then print_char else disabled
+end
+
+open! Print
+
 type mode = Jsx | Diamond
 
 (* We hide the implementation detail of the scanner reading character. Our char
@@ -23,6 +34,7 @@ type t = {
   mutable lineOffset: int; (* current line offset *)
   mutable lnum: int; (* current line number *)
   mutable mode: mode list;
+  mutable commentCount: int;
 }
 
 let setDiamondMode scanner =
@@ -141,6 +153,7 @@ let make ~filename src =
     lineOffset = 0;
     lnum = 1;
     mode = [];
+    commentCount = 0;
   }
 
 
@@ -397,6 +410,8 @@ let scanEscape scanner =
   Token.Character c
 
 let scanSingleLineComment scanner =
+  (* assumption: we're only ever using this helper in `scan` after detecting a comment *)
+  scanner.commentCount <- scanner.commentCount + 1;
   let startOff = scanner.offset in
   let startPos = position scanner in
   let rec skip scanner =
@@ -417,6 +432,7 @@ let scanSingleLineComment scanner =
 
 let scanMultiLineComment scanner =
   (* assumption: we're only ever using this helper in `scan` after detecting a comment *)
+  scanner.commentCount <- scanner.commentCount + 1;
   let contentStartOff = scanner.offset + 2 in
   let startPos = position scanner in
   let rec scan ~depth =

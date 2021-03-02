@@ -29,6 +29,8 @@ type t =
   | Colon
   | Comma
   | Eof
+  (* yoyoyo *)
+  | JsxPlaceholder
   | Exception
   | Backslash [@live]
   | Forwardslash | ForwardslashDot
@@ -105,6 +107,7 @@ let toString = function
   | SingleQuote -> "'"
   | Equal -> "=" | EqualEqual -> "==" | EqualEqualEqual -> "==="
   | Eof -> "eof"
+  | JsxPlaceholder -> "JsxPlaceholder"
   | Bar -> "|"
   | As -> "as"
   | Lparen -> "(" | Rparen -> ")"
